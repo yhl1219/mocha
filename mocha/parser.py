@@ -1,9 +1,10 @@
+from array import array
 import ast
 import inspect
-from typing import Any, cast
+from typing import cast
 
 from mocha.exception import MochaSyntaxException, MochaTypeException
-from mocha.ir import vector, matrix, MochaAstVistor, MochaSignature
+from mocha.ir import MochaAstVistor, MochaSignature
 
 
 def __getsrcfile(func):
@@ -32,7 +33,7 @@ def __extract_signature(func, is_method: bool):
     # return type
     return_type = None if signature.return_annotation in (
         inspect._empty, None) else signature.return_annotation
-    if return_type not in (int, float, matrix, vector, None):
+    if return_type not in (int, float, bool, array, None):
         __syntax_exception(func, f'invalid return type {return_type}')
 
     # params
@@ -51,7 +52,7 @@ def __extract_signature(func, is_method: bool):
                     func, f'parameter requires type')
 
         # make sure param_type is valid and supported
-        if param_type not in (int, float, matrix, vector):
+        if param_type not in (int, float, bool, array):
             __syntax_exception(func, f'invalid type {param_type}')
 
         extracted_signature.append((param_name, param_type))
@@ -83,7 +84,7 @@ def __ir_transform(func, options: CompileOption):
         print(ast.dump(stat))
 
     visitor = MochaAstVistor(func, __getsrcfile(func), signature)
-    # ir = visitor.visit_FunctionDef()
+    ir = visitor.visit_FunctionDef(func_def)
 
     return lambda x: 2
 

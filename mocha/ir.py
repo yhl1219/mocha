@@ -1,38 +1,8 @@
 import ast
-from fileinput import filename
 import inspect
 from typing import Any
 
 from mocha.exception import MochaSyntaxException
-
-
-class Matrix:
-    # TODO: implement stub for matrix
-    def __init__(self, shape: tuple[int, int]) -> None:
-        self.m, self.n = shape
-
-    def __setitem__(self, location: tuple[int, int], value: Any):
-        pass
-
-    def __getitem__(self, location: tuple[int, int], value: Any):
-        pass
-
-# TODO: implement stub for vector
-
-
-class Vector:
-    def __init__(self) -> None:
-        pass
-
-    def __setitem__(self, location: int, value: Any):
-        pass
-
-    def __getitem__(self, location: int, value: Any):
-        pass
-
-
-vector = Vector
-matrix = Matrix
 
 
 class MochaSignature:
@@ -120,7 +90,7 @@ class MochaAstVistor(ast.NodeVisitor):
         var = MochaVar(mangle_name, self.var_id, type)
 
         self.var_id += 1
-        self.var_table[name] = var
+        self.var_table[mangle_name] = var
 
         return var
 
@@ -137,9 +107,50 @@ class MochaAstVistor(ast.NodeVisitor):
             self.visit(stat)
 
     def __find_var(self, node: ast.AST, name: str) -> MochaVar:
-        if name not in self.var_table:
+        mangle_name = f'_{self.var_id}' if name is None else f'_{name}'
+        if mangle_name not in self.var_table:
             self.__syntax_exception(node, f'undefined reference to {name}')
-        return self.var_table[name]
+        return self.var_table[mangle_name]
+
+    def visit_Constant(self, node: ast.Constant) -> MochaConstExpression:
+        return MochaConstExpression(node.value)
+
+    def visit_BinOp(self, node: ast.BinOp) -> Any:
+        # filter out op
+        ops: dict[type, str] = {
+            ast.Add: '+',
+            ast.Sub: '-',
+            ast.Mult: '*',
+            ast.Div: '/',
+            ast.Eq: '==',
+            ast.NotEq: '!=',
+            ast.Is: '==',
+            ast.IsNot: '!=',
+            ast.MatMult: '@',
+            ast.Gt: '>',
+            ast.GtE: '>=',
+            ast.Lt: '<',
+            ast.LtE: '<='
+        }
+
+        try:
+            bop = ops[type(node.op)]
+        except KeyError:
+            self.__syntax_exception(node, f'{str(node.op)} is not supported')
+        return MochaBinaryExpression(self.visit(node.left), bop, self.visit(node.right))
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> Any:
+        ops: dict[type, str] = {
+            ast.UAdd: '+',
+            ast.USub: '-',
+            ast.Not: '!',
+        }
+
+        try:
+            uop = ops[type(node.op)]
+        except KeyError:
+            self.__syntax_exception(node, f'{str(node.op)} is not supported')
+        return MochaUnaryExpression(uop, self.visit(node.operand))
 
     def visit_Assign(self, node: ast.Assign) -> None:
         # extract assign targets
@@ -154,5 +165,12 @@ class MochaAstVistor(ast.NodeVisitor):
                 self.building_sequence.append(
                     MochaAssign(target_var, self.visit(node.value)))
             elif isinstance(target, ast.Subscript):
-                # load
+                # TODO: implement load
                 pass
+            else:
+                self.__syntax_exception(
+                    node, f'parallel assignment is unsupported')
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> Any:
+        print(str(node.annotation))
+        target = node.target
