@@ -15,7 +15,7 @@ def __getsrcfile(func):
 def __syntax_exception(func, message: str):
     f = __getsrcfile(func)
     context, line = inspect.getsourcelines(func)
-    raise MochaSyntaxException(line, context[line], f, message)
+    raise MochaSyntaxException(line, context[1], f, message)
 
 
 def __extract_signature(func, is_method: bool):
@@ -33,7 +33,7 @@ def __extract_signature(func, is_method: bool):
     # return type
     return_type = None if signature.return_annotation in (
         inspect._empty, None) else signature.return_annotation
-    if return_type not in (int, float, bool, array, None):
+    if return_type not in (int, float, bool, list[int], list[float], None):
         __syntax_exception(func, f'invalid return type {return_type}')
 
     # params
@@ -52,7 +52,7 @@ def __extract_signature(func, is_method: bool):
                     func, f'parameter requires type')
 
         # make sure param_type is valid and supported
-        if param_type not in (int, float, bool, array):
+        if param_type not in (int, float, bool, list[float], list[int]):
             __syntax_exception(func, f'invalid type {param_type}')
 
         extracted_signature.append((param_name, param_type))
@@ -85,6 +85,8 @@ def __ir_transform(func, options: CompileOption):
 
     visitor = MochaAstVistor(func, __getsrcfile(func), signature)
     ir = visitor.visit_FunctionDef(func_def)
+
+    ir.dump()
 
     return lambda x: 2
 
