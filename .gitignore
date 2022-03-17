@@ -1,1 +1,6 @@
 /**/__pycache__/
+/build/
+/.cache/
+/bin/
+/target/
+/.vscode/
