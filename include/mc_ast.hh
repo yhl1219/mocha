@@ -23,14 +23,21 @@ namespace mocha {
     virtual ASTType getType() const = 0;
   };
 
-  struct Field {
+  struct Field : public ASTNode {
     using Ptr = std::shared_ptr<Field>;
 
     ASTType dtype;
+    int id;
     std::vector<int> shape;
 
-    Field(ASTType dtype, const std::vector<int> &shape)
-        : dtype(dtype), shape(shape) {}
+    Field(ASTType dtype, int id, const std::vector<int> &shape)
+        : dtype(dtype), shape(shape), id(id) {}
+
+    // only stub method
+    mlir::Value accept(GenContext &generator) override { return mlir::Value(); }
+
+    // only stub method
+    ASTType getType() const override { return ASTType::INT32; }
   };
 
   struct Cast : public ASTNode {
@@ -82,15 +89,7 @@ namespace mocha {
 #undef OP_CASE
     }
 
-    ASTType getType() const override {
-      auto lType = lhs->getType();
-      auto rType = rhs->getType();
-      if (lType != rType) {
-        throw std::exception("type mismatch"); // should not happen
-      } else {
-        return lType;
-      }
-    }
+    ASTType getType() const override { return lhs->getType(); }
 
   private:
     template <typename T> mlir::Value createOp(GenContext &generator) {
@@ -127,7 +126,47 @@ namespace mocha {
     ASTType getType() const override { return ASTType::INT32; }
   };
 
-  struct Load : public ASTNode {};
+  struct Load : public ASTNode {
+    Field::Ptr loadingField;
+    std::vector<ASTNode::Ptr> offsets;
+
+    Load(Field::Ptr loadingField, const std::vector<ASTNode::Ptr> offsets)
+        : loadingField(loadingField), offsets(offsets) {}
+
+    mlir::Value accept(GenContext &generator) override {
+      std::vector<mlir::Value> offsetValue;
+      for (auto optr : offsets)
+        offsetValue.push_back(optr->accept(generator));
+      return generator.builder.create<mlir::AffineLoadOp>(
+          generator.locStub(), generator.getField(loadingField->id),
+          offsetValue);
+    }
+
+    ASTType getType() const override { return loadingField->dtype; }
+  };
+
+  struct Store : public ASTNode {
+    Field::Ptr storingField;
+    std::vector<ASTNode::Ptr> offsets;
+    ASTNode::Ptr value;
+
+    Store(Field::Ptr storingField, const std::vector<ASTNode::Ptr> &offsets,
+          ASTNode::Ptr value)
+        : storingField(storingField), offsets(offsets), value(value) {}
+
+    mlir::Value accept(GenContext &generator) override {
+      std::vector<mlir::Value> offsetValue;
+      for (auto optr : offsets)
+        offsetValue.push_back(optr->accept(generator));
+      generator.builder.create<mlir::AffineStoreOp>(
+          generator.locStub(), value->accept(generator),
+          generator.getField(storingField->id), offsets);
+      return generator.builder.create<mlir::ConstantIntOp>(generator.locStub(),
+                                                           0);
+    }
+
+    ASTType getType() const override { return storingField->dtype; }
+  };
 
   struct Indexer : public ASTNode {
     int position;

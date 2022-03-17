@@ -19,6 +19,7 @@ namespace mocha {
     mlir::ModuleOp module;
     mlir::OpBuilder builder;
     mlir::Value indexer[3];
+    std::vector<mlir::Value> fields;
 
     // create loc stub, not the real one
     mlir::Location locStub() {
@@ -26,5 +27,7 @@ namespace mocha {
     }
 
     mlir::Value getIndexer(int position) { return indexer[position]; }
+
+    mlir::Value getField(int id) { return fields[id]; }
   };
 } // namespace mocha
