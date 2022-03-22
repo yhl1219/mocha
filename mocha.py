@@ -1,4 +1,6 @@
-from typing import Any, Callable
+from dataclasses import fields
+import json
+from typing import Any, Callable, cast
 import numpy as np
 
 
@@ -223,7 +225,7 @@ class Store(Expr):
 
 
 class Indexer(Expr):
-    def __init__(self, position: str) -> None:
+    def __init__(self, position: int) -> None:
         super().__init__()
         self.position = position
 
@@ -233,43 +235,98 @@ class Indexer(Expr):
 
 class Coord3D:
     def __init__(self) -> None:
-        self.x = Indexer('x')
-        self.y = Indexer('y')
-        self.z = Indexer('z')
+        self.x = Indexer(0)
+        self.y = Indexer(1)
+        self.z = Indexer(2)
 
 
 class NodeVisitor:
+    def __init__(self) -> None:
+        self.main_field: Field = cast(Field, None)
+        self.fields: list[Field] = []
+
     def visit(self, node: IRNode):
         if isinstance(node, BinExpr):
-            self.visit_binexpr(node)
+            return self.visit_binexpr(node)
         elif isinstance(node, Cast):
-            self.visit_cast(node)
+            return self.visit_cast(node)
         elif isinstance(node, Const):
-            self.visit_const(node)
+            return self.visit_const(node)
         elif isinstance(node, Load):
-            self.visit_load(node)
+            return self.visit_load(node)
         elif isinstance(node, Store):
-            self.visit_store(node)
+            return self.visit_store(node)
         elif isinstance(node, Indexer):
-            self.visit_indexer(node)
+            return self.visit_indexer(node)
 
     def visit_indexer(self, node: Indexer):
-        pass
+        return {
+            "type": "indexer",
+            "position": node.position
+        }
+
+    def visit_field(self, f: Field, is_main: bool = False):
+        if is_main:
+            self.main_field = f
+            id = 0
+        else:
+            if f in self.fields:
+                id = self.fields.index(f) + 1
+            else:
+                self.fields.append(f)
+                id = len(self.fields)
+        return id
 
     def visit_store(self, node: Store):
-        pass
+        self.shape = node.field.shape
+        return {
+            "type": "store",
+            "value": self.visit(node.value),
+            "field": self.visit_field(node.field, True),
+            "offsets": list(map(self.visit, node.offset))
+        }
 
     def visit_load(self, node: Load):
-        pass
+        return {
+            "type": "load",
+            "field": self.visit_field(node.field),
+            "dtype": self.format_type(node.field.dtype),
+            "offsets": list(map(self.visit, node.offset))
+        }
 
     def visit_const(self, node: Const):
-        pass
+        return {
+            "type": "const",
+            "dtype": self.format_type(type(node.value)),
+            "value": node.value
+        }
+
+    def format_type(self, t: type):
+        return 0 if t == int else 1
 
     def visit_cast(self, node: Cast):
-        pass
+        return {
+            "type": "cast",
+            "value": self.visit(node.v),
+            "from": self.format_type(node.origin),
+            "to": self.format_type(node.to)
+        }
 
     def visit_binexpr(self, node: BinExpr):
-        pass
+        return {
+            "type": "binexpr",
+            "left": self.visit(node.lhs),
+            "op": {"+": 0, "-": 1, "*": 2, "/": 3}[node.op],
+            "right": self.visit(node.rhs)
+        }
+
+    def export_fields(self) -> dict:
+        a = {"main": {
+            "dtype": self.format_type(self.main_field.dtype), "shape": self.main_field.shape}, "rest": []}
+        for f in self.fields:
+            a['rest'].append(
+                {"dtype": self.format_type(f.dtype), "shape": f.shape})
+        return a
 
 
 def stencil(callable: Callable[[Coord3D], None]):
@@ -283,3 +340,10 @@ def stencil(callable: Callable[[Coord3D], None]):
 
     # perform type check and field check
     store.type_check()
+
+    visitor = NodeVisitor()
+    formatted_code = visitor.visit(store)
+
+    import build.mocha_mlir as mocha_mlir
+    generator = mocha_mlir.MochaGenerator(json.dumps(
+        visitor.export_fields()), json.dumps(formatted_code))

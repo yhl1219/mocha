@@ -18,7 +18,7 @@ namespace mocha {
     mlir::MLIRContext &_context;
     mlir::ModuleOp module;
     mlir::OpBuilder builder;
-    mlir::Value indexer[3];
+    std::vector<mlir::Value> indexer;
     std::vector<mlir::Value> fields;
 
     // create loc stub, not the real one

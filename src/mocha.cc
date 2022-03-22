@@ -1,13 +1,12 @@
 #include <stdexcept>
 //
+#include "mc_builder.hh"
 #include <pybind11/pybind11.h>
 
-PYBIND11_MODULE(mochapp, m) {
-  m.doc() = "mocha c++ layer binding";
-  m.def("enter_builder", &create_builder,
-        "create a mocha MLIR context builder");
-  m.def("exit_builder", &exit_builder, "close the mocha MLIR context builder");
-  
-}
+namespace py = pybind11;
 
-int main(int argc, char **argv) { return 0; }
+PYBIND11_MODULE(mocha_mlir, m) {
+  m.doc() = "mocha c++ layer binding";
+  py::class_<mocha::MochaGenerator>(m, "MochaGenerator")
+      .def(py::init<const std::string &, const std::string &>());
+}

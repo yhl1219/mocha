@@ -21,23 +21,8 @@ namespace mocha {
     virtual mlir::Value accept(GenContext &generator) = 0;
 
     virtual ASTType getType() const = 0;
-  };
 
-  struct Field : public ASTNode {
-    using Ptr = std::shared_ptr<Field>;
-
-    ASTType dtype;
-    int id;
-    std::vector<int> shape;
-
-    Field(ASTType dtype, int id, const std::vector<int> &shape)
-        : dtype(dtype), shape(shape), id(id) {}
-
-    // only stub method
-    mlir::Value accept(GenContext &generator) override { return mlir::Value(); }
-
-    // only stub method
-    ASTType getType() const override { return ASTType::INT32; }
+    virtual ~ASTNode() {}
   };
 
   struct Cast : public ASTNode {
@@ -53,10 +38,12 @@ namespace mocha {
     mlir::Value accept(GenContext &generator) override {
       if (from == ASTType::INT32)
         return generator.builder.create<mlir::SIToFPOp>(
-            generator.locStub(), value->accept(generator));
+            generator.locStub(), value->accept(generator),
+            generator.builder.getF32Type());
       else
         return generator.builder.create<mlir::FPToSIOp>(
-            generator.locStub(), value->accept(generator));
+            generator.locStub(), value->accept(generator),
+            generator.builder.getI32Type());
     }
   };
 
@@ -104,9 +91,9 @@ namespace mocha {
     ConstInt(std::int32_t value) : value(value) {}
 
     mlir::Value accept(GenContext &generator) override {
-      auto type = generator.builder.getI32Type();
-      return generator.builder.create<mlir::ConstantIntOp>(generator.locStub(),
-                                                           value, type);
+      return generator.builder.create<mlir::ConstantOp>(
+          generator.locStub(), generator.builder.getI32Type(),
+          generator.builder.getI32IntegerAttr(value));
     }
 
     ASTType getType() const override { return ASTType::INT32; }
@@ -118,40 +105,41 @@ namespace mocha {
     ConstFloat(float value) : value(value) {}
 
     mlir::Value accept(GenContext &generator) override {
-      auto type = generator.builder.getF32Type();
-      return generator.builder.create<mlir::ConstantFloatOp>(
-          generator.locStub(), value, type);
+      return generator.builder.create<mlir::ConstantOp>(
+          generator.locStub(), generator.builder.getF32Type(),
+          generator.builder.getF32FloatAttr(value));
     }
 
     ASTType getType() const override { return ASTType::INT32; }
   };
 
   struct Load : public ASTNode {
-    Field::Ptr loadingField;
+    int loadingField;
+    ASTType dtype;
     std::vector<ASTNode::Ptr> offsets;
 
-    Load(Field::Ptr loadingField, const std::vector<ASTNode::Ptr> offsets)
-        : loadingField(loadingField), offsets(offsets) {}
+    Load(int loadingField, ASTType dtype,
+         const std::vector<ASTNode::Ptr> offsets)
+        : loadingField(loadingField), dtype(dtype), offsets(offsets) {}
 
     mlir::Value accept(GenContext &generator) override {
       std::vector<mlir::Value> offsetValue;
       for (auto optr : offsets)
         offsetValue.push_back(optr->accept(generator));
       return generator.builder.create<mlir::AffineLoadOp>(
-          generator.locStub(), generator.getField(loadingField->id),
-          offsetValue);
+          generator.locStub(), generator.getField(loadingField), offsetValue);
     }
 
-    ASTType getType() const override { return loadingField->dtype; }
+    ASTType getType() const override { return dtype; }
   };
 
   struct Store : public ASTNode {
-    Field::Ptr storingField;
+    int storingField;
     std::vector<ASTNode::Ptr> offsets;
     ASTNode::Ptr value;
 
-    Store(Field::Ptr storingField, const std::vector<ASTNode::Ptr> &offsets,
-          ASTNode::Ptr value)
+    Store(ASTNode::Ptr value, int storingField,
+          const std::vector<ASTNode::Ptr> &offsets)
         : storingField(storingField), offsets(offsets), value(value) {}
 
     mlir::Value accept(GenContext &generator) override {
@@ -160,12 +148,13 @@ namespace mocha {
         offsetValue.push_back(optr->accept(generator));
       generator.builder.create<mlir::AffineStoreOp>(
           generator.locStub(), value->accept(generator),
-          generator.getField(storingField->id), offsets);
-      return generator.builder.create<mlir::ConstantIntOp>(generator.locStub(),
-                                                           0);
+          generator.getField(storingField), offsetValue);
+      return generator.builder.create<mlir::ConstantOp>(
+          generator.locStub(), generator.builder.getI32Type(),
+          generator.builder.getI32IntegerAttr(0));
     }
 
-    ASTType getType() const override { return storingField->dtype; }
+    ASTType getType() const override { return ASTType::INT32; }
   };
 
   struct Indexer : public ASTNode {
